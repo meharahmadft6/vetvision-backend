@@ -1,17 +1,20 @@
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
-const User = require("../models/User");
-const crypto = require("crypto");
+const mongoose = require("mongoose"); // Import mongoose to validate ObjectId
 const nodemailer = require("nodemailer");
+const crypto = require("crypto");
+const bcrypt = require("bcryptjs");
+const User = require("../models/User"); // Import User model
+const jwt = require("jsonwebtoken");
+const { log } = require("console");
+// Configure Nodemailer with Free Gmail SMTP
 const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: process.env.EMAIL_PORT,
-  secure: false, // Set to `true` for port 465 (SSL)
+  service: "gmail",
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
+    user: process.env.EMAIL_USER, // Your Gmail address
+    pass: process.env.EMAIL_PASS, // Use App Password (not regular password)
   },
 });
+
+// Forgot Password: Generate & Send 6-digit OTP
 exports.forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
@@ -24,54 +27,90 @@ exports.forgotPassword = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Generate Reset Token
-    const resetToken = crypto.randomBytes(32).toString("hex");
-    user.resetPasswordToken = resetToken;
-    user.resetPasswordExpires = Date.now() + 3600000; // 1 hour expiration
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000); // 6-digit OTP
+    user.resetPasswordToken = otp;
+    user.resetPasswordExpires = Date.now() + 60 * 60 * 1000; // Valid for 60 minutes
     await user.save();
-
-    // Reset Link
-    const resetLink = `http://yourfrontend.com/reset-password?token=${resetToken}`;
 
     // Email Content
     const mailOptions = {
-      from: '"Talkzilla" <noreply@demomailtrap.com>',
+      from: `"TaLkZilla" <${process.env.EMAIL_USER}>`,
       to: user.email,
-      subject: "Password Reset Request",
+      subject: "Your Password Reset Code - TaLkZilla",
       html: `
-        <p>Hello ${user.name},</p>
-        <p>Click the link below to reset your password:</p>
-        <a href="${resetLink}" target="_blank">${resetLink}</a>
-        <p>If you did not request this, please ignore this email.</p>
+ <div style="max-width: 600px; margin: auto; font-family: 'Arial', sans-serif; background: #ffffff; padding: 30px; border-radius: 12px; box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);">
+  <!-- Header Section -->
+  <h2 style="text-align: center; color: #1D4ED8; font-size: 36px; font-weight: 600; letter-spacing: 1px; margin-bottom: 25px; text-transform: capitalize;">
+    Reset Your Password
+  </h2>
+  
+  <!-- Greeting Section -->
+  <p style="text-align: center; font-size: 18px; color: #4B5563;">
+    Hello <b>${user.name}</b>, 👋
+  </p>
+  
+  <!-- Instructions Section -->
+  <p style="text-align: center; font-size: 16px; color: #6B7280; margin-bottom: 30px;">
+    We received a request to reset your password. Use the OTP below to complete the process. This code will expire in <b>60 minutes</b>.
+  </p>
+
+  <!-- OTP Display Section -->
+  <div style="display: flex; justify-content: center; align-items: center; font-size: 36px; font-weight: 700; color: #1D4ED8; padding: 20px 30px; border: 2px solid #1D4ED8; border-radius: 8px; letter-spacing: 4px; margin-bottom: 20px; background-color: #F3F4F6; width: fit-content; margin-left: auto; margin-right: auto;">
+    ${otp}
+  </div>
+
+  <!-- Disclaimer Section -->
+  <p style="text-align: center; font-size: 14px; color: #DC2626; margin-bottom: 20px;">
+    ⚠️ If you didn’t request this, please ignore this email.
+  </p>
+
+  <!-- Support Section -->
+  <p style="text-align: center; font-size: 14px; color: #6B7280;">
+    Need assistance? <a href="mailto:support@talkzilla.com" style="color: #1D4ED8; text-decoration: none; font-weight: 500;">Contact Support</a>
+  </p>
+
+  <!-- Footer Section -->
+  <p style="text-align: center; font-size: 12px; color: #9CA3AF; margin-top: 30px;">
+    This is an automated message. Please do not reply to this email.
+  </p>
+</div>
+
+
       `,
     };
 
     // Send Email
     await transporter.sendMail(mailOptions);
 
-    res.json({ message: "Reset link sent to email!" });
+    res.json({ message: "OTP sent to email!" });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server error", error });
   }
 };
 
+// Reset Password: Verify OTP & Change Password
 exports.resetPassword = async (req, res) => {
   try {
-    const { token, newPassword } = req.body;
-    if (!token || !newPassword) {
+    const { email, otp, newPassword } = req.body;
+
+    if (!email || !newPassword) {
+      console.log("Invalid");
       return res
         .status(400)
-        .json({ message: "Token and new password required" });
+        .json({ message: "Email, OTP, and new password are required" });
     }
 
     const user = await User.findOne({
-      resetPasswordToken: token,
-      resetPasswordExpires: { $gt: Date.now() }, // Check if token is still valid
+      email,
+      resetPasswordToken: otp,
+      resetPasswordExpires: { $gt: Date.now() }, // Check if OTP is still valid
     });
 
     if (!user) {
-      return res.status(400).json({ message: "Invalid or expired token" });
+      console.log("Invalid or expired OTP");
+      return res.status(400).json({ message: "Invalid or expired OTP" });
     }
 
     // Hash the new password
@@ -82,10 +121,34 @@ exports.resetPassword = async (req, res) => {
 
     res.json({ message: "Password reset successful" });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ message: "Server error", error });
   }
 };
+exports.verifyOTP = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) {
+      return res.status(400).json({ message: "Email and OTP are required" });
+    }
 
+    const user = await User.findOne({
+      email,
+      resetPasswordToken: otp,
+      resetPasswordExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: "Invalid or expired OTP" });
+    }
+
+    res.json({ message: "OTP verified successfully!" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error", error });
+  }
+};
+1;
 exports.registerUser = async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
@@ -104,12 +167,57 @@ exports.registerUser = async (req, res) => {
     const newUser = new User({ name, email, phone, password: hashedPassword });
     await newUser.save();
 
+    // Welcome Email Content
+    const mailOptions = {
+      from: `"TaLkZilla" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "Welcome to TaLkZilla!",
+      html: `
+        <div style="max-width: 600px; margin: auto; font-family: 'Arial', sans-serif; background: #ffffff; padding: 30px; border-radius: 12px; box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);">
+          <!-- Header Section -->
+          <h2 style="text-align: center; color: #1D4ED8; font-size: 36px; font-weight: 600; letter-spacing: 1px; margin-bottom: 25px; text-transform: capitalize;">
+            Welcome to TaLkZilla!
+          </h2>
+          
+          <!-- Greeting Section -->
+          <p style="text-align: center; font-size: 18px; color: #4B5563;">
+            Hello <b>${name}</b>, 👋
+          </p>
+          
+          <!-- Welcome Message Section -->
+          <p style="text-align: center; font-size: 16px; color: #6B7280; margin-bottom: 30px;">
+            We're thrilled to have you on board! Thank you for joining our community. Get ready to explore amazing features and connect with people around the world.
+          </p>
+
+          <!-- Call to Action Section -->
+          <div style="text-align: center; margin-bottom: 30px;">
+            <a href="https://talkzilla.com" style="background-color: #1D4ED8; color: #ffffff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-size: 16px; font-weight: 500;">
+              Start Exploring
+            </a>
+          </div>
+
+          <!-- Support Section -->
+          <p style="text-align: center; font-size: 14px; color: #6B7280;">
+            Need assistance? <a href="mailto:support@talkzilla.com" style="color: #1D4ED8; text-decoration: none; font-weight: 500;">Contact Support</a>
+          </p>
+
+          <!-- Footer Section -->
+          <p style="text-align: center; font-size: 12px; color: #9CA3AF; margin-top: 30px;">
+            This is an automated message. Please do not reply to this email.
+          </p>
+        </div>
+      `,
+    };
+
+    // Send Welcome Email
+    await transporter.sendMail(mailOptions);
+
     res.status(201).json({ message: "User registered successfully" });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ message: "Server error", error });
   }
 };
-
 exports.loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -134,6 +242,7 @@ exports.loginUser = async (req, res) => {
 
     res.status(200).json({ message: "Login successful", token, user });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ message: "Server error", error });
   }
 };
@@ -160,5 +269,67 @@ exports.getUserById = async (req, res) => {
     res.status(200).json(user);
   } catch (error) {
     res.status(500).json({ message: "Server error", error });
+  }
+};
+exports.uploadProfileImage = async (req, res) => {
+  try {
+    const { user_id } = req.body;
+    console.log(req.body);
+    if (!req.file) return res.status(400).json({ error: "No image uploaded" });
+
+    const imagePath = `/uploads/${req.file.filename}`;
+
+    const user = await User.findByIdAndUpdate(
+      user_id,
+      { profileImage: imagePath },
+      { new: true }
+    );
+
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    res.json({ success: true, image_url: `http://localhost:8081${imagePath}` });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Image upload failed" });
+  }
+};
+exports.getUserProfileImage = async (req, res) => {
+  try {
+    console.log("🔍 Request Params:", req.params);
+
+    const { user_id } = req.params; // Get user_id from params
+
+    // Validate user_id format
+    if (!user_id || !mongoose.Types.ObjectId.isValid(user_id)) {
+      console.log("❌ Invalid user ID received:", user_id);
+      return res.status(400).json({ error: `Invalid user ID: ${user_id}` });
+    }
+
+    console.log("🔍 Fetching user with ID:", user_id);
+
+    const user = await User.findById(user_id);
+    if (!user) {
+      console.log("❌ User not found in database for ID:", user_id);
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    if (!user.profileImage) {
+      console.log("❌ User found but profile image is missing:", user_id);
+      return res.status(404).json({ error: "Profile image not found" });
+    }
+
+    console.log("✅ Profile Image Path:", user.profileImage);
+
+    // Fix URL for Android Emulator
+    const serverAddress = "10.0.2.2";
+    res.json({
+      success: true,
+      image_url: `http://${serverAddress}:8081${user.profileImage}`,
+    });
+  } catch (error) {
+    console.error("❌ Error fetching user profile image:", error);
+    res
+      .status(500)
+      .json({ error: "Failed to fetch profile image", details: error.message });
   }
 };
