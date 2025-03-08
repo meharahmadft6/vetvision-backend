@@ -303,28 +303,28 @@ exports.uploadProfileImage = async (req, res) => {
 
 exports.getUserProfileImage = async (req, res) => {
   try {
-    const { user_id } = req.params; // Get user_id from params
+    const { user_id } = req.params;
 
-    if (!user_id || !mongoose.Types.ObjectId.isValid(user_id)) {
-      return res.status(400).json({ error: `Invalid user ID: ${user_id}` });
+    // ✅ Validate user_id
+    if (!user_id) {
+      return res.status(400).json({ error: "Invalid user ID" });
     }
 
+    // ✅ Find user
     const user = await User.findById(user_id);
-
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
 
+    // ✅ Check if the user has a profile image
     if (!user.profileImage) {
       return res.status(404).json({ error: "Profile image not found" });
     }
 
-    res.json({
-      success: true,
-      image_url: user.profileImage, // Cloudinary URL is stored directly
-    });
+    // ✅ Return Cloudinary image URL
+    res.json({ success: true, image_url: user.profileImage });
   } catch (error) {
-    console.error("❌ Error fetching user profile image:", error);
+    console.error("❌ Error fetching profile image:", error);
     res.status(500).json({ error: "Failed to fetch profile image" });
   }
 };
