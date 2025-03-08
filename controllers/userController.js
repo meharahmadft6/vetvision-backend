@@ -271,65 +271,60 @@ exports.getUserById = async (req, res) => {
     res.status(500).json({ message: "Server error", error });
   }
 };
+
 exports.uploadProfileImage = async (req, res) => {
   try {
     const { user_id } = req.body;
-    console.log(req.body);
-    if (!req.file) return res.status(400).json({ error: "No image uploaded" });
 
-    const imagePath = `/uploads/${req.file.filename}`;
+    if (!req.file) {
+      return res.status(400).json({ error: "No image uploaded" });
+    }
 
+    // Cloudinary returns the full URL automatically
+    const imageUrl = req.file.path;
+
+    // Update the user's profileImage with Cloudinary URL
     const user = await User.findByIdAndUpdate(
       user_id,
-      { profileImage: imagePath },
+      { profileImage: imageUrl },
       { new: true }
     );
 
-    if (!user) return res.status(404).json({ error: "User not found" });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
 
-    res.json({ success: true, image_url: `http://localhost:8081${imagePath}` });
+    res.json({ success: true, image_url: imageUrl });
   } catch (error) {
-    console.error(error);
+    console.error("❌ Image upload failed:", error);
     res.status(500).json({ error: "Image upload failed" });
   }
 };
+
 exports.getUserProfileImage = async (req, res) => {
   try {
-    console.log("🔍 Request Params:", req.params);
-
     const { user_id } = req.params; // Get user_id from params
 
-    // Validate user_id format
     if (!user_id || !mongoose.Types.ObjectId.isValid(user_id)) {
-      console.log("❌ Invalid user ID received:", user_id);
       return res.status(400).json({ error: `Invalid user ID: ${user_id}` });
     }
 
-    console.log("🔍 Fetching user with ID:", user_id);
-
     const user = await User.findById(user_id);
+
     if (!user) {
-      console.log("❌ User not found in database for ID:", user_id);
       return res.status(404).json({ error: "User not found" });
     }
 
     if (!user.profileImage) {
-      console.log("❌ User found but profile image is missing:", user_id);
       return res.status(404).json({ error: "Profile image not found" });
     }
 
-    console.log("✅ Profile Image Path:", user.profileImage);
-
-    // Fix URL for Android Emulator
-    const serverAddress = "10.0.2.2";
     res.json({
       success: true,
-      image_url: `http://${serverAddress}:8081${user.profileImage}`,
+      image_url: user.profileImage, // Cloudinary URL is stored directly
     });
   } catch (error) {
     console.error("❌ Error fetching user profile image:", error);
-    res
-      .status(500)
-      .json({ error: "Failed to fetch profile image", details: error.message });
+    res.status(500).json({ error: "Failed to fetch profile image" });
   }
 };
