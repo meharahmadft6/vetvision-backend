@@ -22,5 +22,5 @@ app.use(morgan("dev")); // Morgan for logging requests
 app.use("/api/users", require("./routes/userRoutes"));
 const chatbotRoutes = require("./routes/chatbotRoutes");
 app.use("/api/chatbot", chatbotRoutes);
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
