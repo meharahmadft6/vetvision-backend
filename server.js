@@ -17,7 +17,9 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use(cors());
 app.use(express.json());
 app.use(morgan("dev")); // Morgan for logging requests
-
+app.get("/", (req, res) => {
+  res.send("Hello, your backend is live!");
+});
 // Routes
 app.use("/api/users", require("./routes/userRoutes"));
 const chatbotRoutes = require("./routes/chatbotRoutes");
