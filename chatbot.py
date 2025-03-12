@@ -6,7 +6,7 @@ import csv
 chatbot = ChatBot(
     "VetBot",
     storage_adapter="chatterbot.storage.SQLStorageAdapter",
-    database_uri="sqlite:///vetbott.db",  # Save chatbot data to a database
+    database_uri="sqlite:///chat.db",  # Save chatbot data to a database
     logic_adapters=[
         {
             "import_path": "chatterbot.logic.BestMatch",
@@ -36,4 +36,4 @@ if os.path.exists("veterinary_data.csv"):
             vet_trainer = ListTrainer(chatbot)
             vet_trainer.train(vet_data)
 
-print("✅ Training Complete! Chatbot is now saved in 'vetbott.db'.")
+print("✅ Training Complete! Chatbot is now saved in 'chat.db'.")
