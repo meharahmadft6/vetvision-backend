@@ -13,9 +13,12 @@ const handleChatbotMessage = async (req, res) => {
     }
 
     // Send message to chatbot API
-    const response = await axios.post("http://localhost:5000/chat", {
-      message,
-    });
+    const response = await axios.post(
+      "https://backend-mastitis.onrender.com/chat",
+      {
+        message,
+      }
+    );
     const botResponse = response.data.response;
 
     // Save to DB in a separate async process
