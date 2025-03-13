@@ -14,7 +14,7 @@ const handleChatbotMessage = async (req, res) => {
 
     // Send message to chatbot API
     const response = await axios.post(
-      "https://backend-mastitis.onrender.com/chat",
+      "https://chatbot-green-grass-2359-production.up.railway.app/chat",
       {
         message,
       }
