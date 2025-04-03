@@ -222,31 +222,75 @@ exports.loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    // Validation
     if (!email || !password) {
-      return res.status(400).json({ message: "All fields are required" });
+      return res.status(400).json({
+        success: false,
+        error: "VALIDATION_ERROR",
+        message: "Email and password are required",
+      });
     }
 
+    if (!isValidEmail(email)) {
+      return res.status(400).json({
+        success: false,
+        error: "VALIDATION_ERROR",
+        message: "Please provide a valid email address",
+      });
+    }
+
+    // Find user
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(400).json({ message: "Invalid email or password" });
+      return res.status(401).json({
+        success: false,
+        error: "AUTH_ERROR",
+        message: "Email not Found", // Generic message for security
+      });
     }
 
+    // Check password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(400).json({ message: "Invalid email or password" });
+      return res.status(401).json({
+        success: false,
+        error: "AUTH_ERROR",
+        message: "Invalid Password", // Same message as above
+      });
     }
 
+    // Generate token
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
       expiresIn: "7d",
     });
 
-    res.status(200).json({ message: "Login successful", token, user });
+    // Successful response
+    res.status(200).json({
+      success: true,
+      message: "Login successful",
+      token,
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        // Only include necessary user data
+      },
+    });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Server error", error });
+    console.error("Login error:", error);
+    res.status(500).json({
+      success: false,
+      error: "SERVER_ERROR",
+      message: "An unexpected error occurred. Please try again later.",
+    });
   }
 };
 
+// Helper function for email validation
+function isValidEmail(email) {
+  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return re.test(String(email).toLowerCase());
+}
 exports.getAllUsers = async (req, res) => {
   try {
     const users = await User.find({}, "-password"); // Exclude password field
