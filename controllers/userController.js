@@ -151,10 +151,15 @@ exports.verifyOTP = async (req, res) => {
 1;
 exports.registerUser = async (req, res) => {
   try {
-    const { name, email, phone, password } = req.body;
+    const { name, email, phone, password, role } = req.body;
 
-    if (!name || !email || !password || !phone) {
+    console.log(req.body);
+    if (!name || !email || !password || !phone || !role) {
       return res.status(400).json({ message: "All fields are required" });
+    }
+
+    if (!["user", "doctor"].includes(role.toLowerCase())) {
+      return res.status(400).json({ message: "Invalid role specified" });
     }
 
     const existingUser = await User.findOne({ email });
@@ -164,19 +169,25 @@ exports.registerUser = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const newUser = new User({ name, email, phone, password: hashedPassword });
+    const newUser = new User({
+      name,
+      email,
+      phone,
+      password: hashedPassword,
+      role: role.toLowerCase(),
+    });
     await newUser.save();
 
     // Welcome Email Content
     const mailOptions = {
-      from: `"TaLkZilla" <${process.env.EMAIL_USER}>`,
+      from: `"VetVision" <${process.env.EMAIL_USER}>`,
       to: email,
-      subject: "Welcome to TaLkZilla!",
+      subject: "Welcome to VetVision!",
       html: `
         <div style="max-width: 600px; margin: auto; font-family: 'Arial', sans-serif; background: #ffffff; padding: 30px; border-radius: 12px; box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);">
           <!-- Header Section -->
           <h2 style="text-align: center; color: #1D4ED8; font-size: 36px; font-weight: 600; letter-spacing: 1px; margin-bottom: 25px; text-transform: capitalize;">
-            Welcome to TaLkZilla!
+            Welcome to VetVision!
           </h2>
           
           <!-- Greeting Section -->
@@ -186,19 +197,23 @@ exports.registerUser = async (req, res) => {
           
           <!-- Welcome Message Section -->
           <p style="text-align: center; font-size: 16px; color: #6B7280; margin-bottom: 30px;">
-            We're thrilled to have you on board! Thank you for joining our community. Get ready to explore amazing features and connect with people around the world.
+            We're thrilled to have you on board! Thank you for joining our veterinary community. Get ready to explore amazing features and ${
+              role === "doctor"
+                ? "provide excellent care to pets"
+                : "take the best care of your pets"
+            }.
           </p>
 
           <!-- Call to Action Section -->
           <div style="text-align: center; margin-bottom: 30px;">
-            <a href="https://talkzilla.com" style="background-color: #1D4ED8; color: #ffffff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-size: 16px; font-weight: 500;">
+            <a href="https://vetvision.com" style="background-color: #1D4ED8; color: #ffffff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-size: 16px; font-weight: 500;">
               Start Exploring
             </a>
           </div>
 
           <!-- Support Section -->
           <p style="text-align: center; font-size: 14px; color: #6B7280;">
-            Need assistance? <a href="mailto:support@talkzilla.com" style="color: #1D4ED8; text-decoration: none; font-weight: 500;">Contact Support</a>
+            Need assistance? <a href="mailto:support@vetvision.com" style="color: #1D4ED8; text-decoration: none; font-weight: 500;">Contact Support</a>
           </p>
 
           <!-- Footer Section -->
@@ -212,7 +227,15 @@ exports.registerUser = async (req, res) => {
     // Send Welcome Email
     await transporter.sendMail(mailOptions);
 
-    res.status(201).json({ message: "User registered successfully" });
+    res.status(201).json({
+      message: "User registered successfully",
+      user: {
+        id: newUser._id,
+        name: newUser.name,
+        email: newUser.email,
+        role: newUser.role,
+      },
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server error", error });
