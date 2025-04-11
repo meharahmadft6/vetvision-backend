@@ -8,12 +8,13 @@ const {
   getDoctorById,
 } = require("../controllers/doctorController");
 
-// const authMiddleware = require("../middlewares/authMiddleware");
+const authMiddleware = require("../middlewares/authMiddleware");
 const uploadMiddleware = require("../middlewares/uploadMiddleware");
 
 // POST /api/doctors/profile - Create or update doctor profile (Private)
 router.post(
   "/profile",
+  z
   uploadMiddleware.single("profileImage"),
   createOrUpdateProfile
 );
