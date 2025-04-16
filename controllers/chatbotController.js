@@ -26,7 +26,7 @@ const handleChatbotMessage = async (req, res) => {
 
     res.json({ response: botResponse });
   } catch (error) {
-    console.error("Error processing chatbot request:", error.message);
+    console.error("Error processing chatbot request:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 };
