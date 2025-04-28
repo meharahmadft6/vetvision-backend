@@ -20,7 +20,7 @@ router.post(
 );
 
 // GET /api/doctors/profile - Get doctor profile (Private)
-router.get("/profile", authMiddleware, getProfile);
+router.get("/profile/:userId", getProfile);
 
 // GET /api/doctors - Get all doctors (Public)
 router.get("/", getAllDoctors);
