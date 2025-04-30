@@ -56,6 +56,7 @@ exports.createOrUpdateProfile = async (req, res) => {
 // Get doctor profile
 exports.getProfile = async (req, res) => {
   try {
+    console.log("Fetching doctor profile for user ID:", req.params.userId);
     const { userId } = req.params;
 
     const doctor = await Doctor.findOne({ userId }).populate(

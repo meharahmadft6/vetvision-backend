@@ -9,6 +9,9 @@ dotenv.config();
 connectDB();
 const cloudinary = require("cloudinary").v2;
 
+// ... other middleware and routes
+
+
 // Cloudinary configuration
 cloudinary.config({
   cloud_name: process.env.CLOUD_NAME,
@@ -41,6 +44,8 @@ app.use("/api/chatbot", require("./routes/chatbotRoutes"));
 
 // Doctor routes
 app.use("/api/doctors", require("./routes/doctorRoutes"));
+app.use("/api/appointments", require("./routes/appointmentRoutes"));
+
 
 // Error handling middleware (should be after all routes)
 app.use((err, req, res, next) => {
