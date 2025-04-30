@@ -5,28 +5,13 @@ const authMiddleware = require("../middlewares/authMiddleware");
 
 // Patient routes
 router.post("/:id", appointmentController.bookAppointment);
-router.get(
-  "/patient",
-  authMiddleware,
-  appointmentController.getPatientAppointments
-);
-router.put(
-  "/:id/cancel",
-  authMiddleware,
-  appointmentController.cancelAppointment
-);
+router.get("/patient/:id", appointmentController.getAppointmentsByPatientId);
+
+router.put("/:id/cancel", appointmentController.cancelAppointment);
 
 // Doctor routes
-router.get(
-  "/doctor",
-  authMiddleware,
-  appointmentController.getDoctorAppointments
-);
-router.put(
-  "/:id/confirm",
-  authMiddleware,
-  appointmentController.confirmAppointment
-);
+router.get("/doctor", appointmentController.getDoctorAppointments);
+router.put("/:id/confirm", appointmentController.confirmAppointment);
 router.put(
   "/:id/complete",
   authMiddleware,
@@ -34,8 +19,8 @@ router.put(
 );
 
 // Admin routes
-router.get("/", authMiddleware, appointmentController.getAllAppointments);
-router.get("/:id", authMiddleware, appointmentController.getAppointmentById);
-router.delete("/:id", authMiddleware, appointmentController.deleteAppointment);
+router.get("/admin", appointmentController.getAllAppointments);
+router.get("/:id", appointmentController.getAppointmentById);
+router.delete("/:id", appointmentController.deleteAppointment);
 
 module.exports = router;

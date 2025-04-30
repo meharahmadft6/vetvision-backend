@@ -12,6 +12,7 @@ exports.bookAppointment = async (req, res) => {
     console.log("Patient ID:", patientId);
     // Validate input
     if (!doctorId || !date || !startTime || !endTime) {
+      console.error("Missing required fields:");
       return res
         .status(400)
         .json({ success: false, message: "Missing required fields" });
@@ -85,12 +86,40 @@ exports.bookAppointment = async (req, res) => {
 exports.getPatientAppointments = async (req, res) => {
   try {
     const appointments = await Appointment.find({ patient: req.user.id })
-      .populate("doctor", "name specialization")
+      .populate("doctor", "name degree")
       .sort({ date: 1, startTime: 1 });
 
     res.json({ success: true, appointments });
   } catch (error) {
     console.error("Error fetching patient appointments:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+exports.getAppointmentsByPatientId = async (req, res) => {
+  try {
+    const patientId = req.params.id;
+
+    const appointments = await Appointment.find({ patient: patientId })
+      .populate("doctor", "name degree")
+      .sort({ date: 1, startTime: 1 });
+
+    if (!appointments.length) {
+      return res.status(404).json({
+        success: false,
+        message: "No appointments found for this patient.",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      appointments,
+    });
+  } catch (error) {
+    console.error("Error fetching appointments by patient ID:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
