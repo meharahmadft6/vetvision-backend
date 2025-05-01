@@ -189,30 +189,48 @@ exports.getAppointmentById = async (req, res) => {
 // Cancel appointment
 exports.cancelAppointment = async (req, res) => {
   try {
-    const appointment = await Appointment.findOneAndUpdate(
+    // 1. First update the appointment status
+    const updatedAppointment = await Appointment.findOneAndUpdate(
       {
         _id: req.params.id,
-        patient: req.user.id,
+        patient: req.query.userId,
         status: { $in: ["pending", "confirmed"] },
       },
       { status: "cancelled" },
       { new: true }
-    ).populate("doctor", "name email");
+    );
 
-    if (!appointment) {
+    if (!updatedAppointment) {
       return res.status(404).json({
         success: false,
         message: "Appointment not found or cannot be cancelled",
       });
     }
 
-    // Send cancellation email (async)
-    sendCancellationEmail(appointment, req.user);
+    // 2. Then fetch the fully populated appointment data
+    const populatedAppointment = await Appointment.findById(
+      updatedAppointment._id
+    )
+      .populate({
+        path: "patient",
+        select: "name email",
+      })
+      .populate({
+        path: "doctor",
+        select: "degree",
+        populate: {
+          path: "userId",
+          select: "name email",
+        },
+      });
+
+    // 3. Send cancellation email with all required data
+    await sendCancellationEmail(populatedAppointment, req.user);
 
     res.json({
       success: true,
       message: "Appointment cancelled successfully",
-      appointment,
+      appointment: populatedAppointment,
     });
   } catch (error) {
     console.error("Error cancelling appointment:", error);
@@ -222,7 +240,6 @@ exports.cancelAppointment = async (req, res) => {
     });
   }
 };
-
 // Confirm appointment (doctor)
 exports.confirmAppointment = async (req, res) => {
   try {
@@ -445,9 +462,14 @@ async function sendAppointmentConfirmationEmails(appointment) {
 
 async function sendCancellationEmail(appointment, patient) {
   try {
+    console.log(
+      "Sending cancellation email to doctor:",
+      appointment.doctor.userId.email
+    );
+
     await transporter.sendMail({
       from: `"VetVision" <${process.env.EMAIL_USER}>`,
-      to: appointment.doctor.email,
+      to: appointment.doctor.userId.email,
       subject: "Appointment Cancellation Notification",
       html: `
           <div style="${emailStyles.container}">
@@ -457,7 +479,7 @@ async function sendCancellationEmail(appointment, patient) {
             </p>
             
             <div style="text-align: left; margin: 25px 0;">
-              <p><strong>Patient:</strong> ${patient.name}</p>
+              <p><strong>Patient:</strong> ${appointment.patient.name}</p>
               <p><strong>Original Date:</strong> ${appointment.date.toDateString()}</p>
               <p><strong>Time Slot:</strong> ${appointment.startTime} - ${
         appointment.endTime
