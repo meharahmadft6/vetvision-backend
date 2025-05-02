@@ -134,3 +134,58 @@ exports.getDoctorById = async (req, res) => {
     });
   }
 };
+exports.updateProfileImage = async (req, res) => {
+  try {
+    const { userId } = req.user;
+
+    // Check if file was uploaded
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "No image file provided",
+      });
+    }
+
+    // Upload image to Cloudinary
+    let profileImage;
+    try {
+      const uploadResult = await uploadToCloudinary(req.file);
+      profileImage = uploadResult.url;
+    } catch (uploadError) {
+      return res.status(500).json({
+        success: false,
+        message: "Image upload failed",
+        error: uploadError.message,
+      });
+    }
+
+    // Update only the profile image
+    const updatedDoctor = await Doctor.findOneAndUpdate(
+      { userId },
+      { profileImage },
+      { new: true }
+    );
+
+    if (!updatedDoctor) {
+      return res.status(404).json({
+        success: false,
+        message: "Doctor profile not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Profile image updated successfully",
+      data: {
+        profileImage: updatedDoctor.profileImage,
+      },
+    });
+  } catch (error) {
+    console.error("Profile image update error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};

@@ -6,6 +6,7 @@ const {
   getProfile,
   getAllDoctors,
   getDoctorById,
+  updateProfileImage,
 } = require("../controllers/doctorController");
 
 const authMiddleware = require("../middlewares/authMiddleware");
@@ -17,6 +18,13 @@ router.post(
   authMiddleware,
   uploadMiddleware.single("profileImage"),
   createOrUpdateProfile
+);
+
+router.patch(
+  "/profile/image",
+  authMiddleware,
+  uploadMiddleware.single("profileImage"),
+  updateProfileImage
 );
 
 // GET /api/doctors/profile - Get doctor profile (Private)
