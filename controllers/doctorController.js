@@ -109,7 +109,7 @@ exports.getAllDoctors = async (req, res) => {
 exports.getDoctorsByLocation = async (req, res) => {
   try {
     const { location } = req.body;
-
+    console.log("Location parameter:", location);
     if (!location) {
       return res.status(400).json({
         success: false,
