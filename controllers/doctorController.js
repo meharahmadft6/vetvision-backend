@@ -110,6 +110,7 @@ exports.getDoctorsByLocation = async (req, res) => {
   try {
     const { location } = req.body;
     console.log("Location parameter:", location);
+
     if (!location) {
       return res.status(400).json({
         success: false,
@@ -121,13 +122,78 @@ exports.getDoctorsByLocation = async (req, res) => {
     const normalizedLocation = location.trim().toLowerCase();
     const locationParts = normalizedLocation.split(/\s*,\s*/);
     const city = locationParts[0];
-    const country = locationParts[locationParts.length - 1];
+    const country =
+      locationParts.length > 1 ? locationParts[locationParts.length - 1] : null;
 
-    // Search for addresses that contain BOTH city and country
+    // Create search conditions
+    const searchConditions = [];
+
+    // Map common city names to their Urdu equivalents
+    const cityMappings = {
+      lahore: "لاہور",
+      karachi: "کراچی",
+      islamabad: "اسلام آباد",
+      multan: "ملتان",
+      peshawar: "پشاور",
+    };
+
+    // Always search for city name (English and Urdu) regardless of whether country is specified
+    if (cityMappings[city]) {
+      // English city name
+      searchConditions.push({
+        clinicAddress: {
+          $regex: new RegExp(city, "i"),
+        },
+      });
+
+      // Urdu city name
+      searchConditions.push({
+        clinicAddress: {
+          $regex: new RegExp(cityMappings[city], "i"),
+        },
+      });
+    } else {
+      // For cities not in our mapping, just search for the provided name
+      searchConditions.push({
+        clinicAddress: {
+          $regex: new RegExp(city, "i"),
+        },
+      });
+    }
+
+    // If country is specified, add country-specific conditions
+    if (country) {
+      // Add conditions that require both city and country
+      if (cityMappings[city]) {
+        // English city + country
+        searchConditions.push({
+          clinicAddress: {
+            $regex: new RegExp(`${city}.*${country}|${country}.*${city}`, "i"),
+          },
+        });
+
+        // Urdu city + country
+        searchConditions.push({
+          clinicAddress: {
+            $regex: new RegExp(
+              `${cityMappings[city]}.*${country}|${country}.*${cityMappings[city]}`,
+              "i"
+            ),
+          },
+        });
+      } else {
+        // For unmapped cities, just use the provided names
+        searchConditions.push({
+          clinicAddress: {
+            $regex: new RegExp(`${city}.*${country}|${country}.*${city}`, "i"),
+          },
+        });
+      }
+    }
+
+    // Search for doctors matching any of the conditions
     const doctors = await Doctor.find({
-      clinicAddress: {
-        $regex: new RegExp(`${city}.*${country}|${country}.*${city}`, "i"),
-      },
+      $or: searchConditions,
     })
       .populate("userId", "name email phone")
       .sort({ createdAt: -1 });
