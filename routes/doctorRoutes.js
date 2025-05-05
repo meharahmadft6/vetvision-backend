@@ -7,6 +7,7 @@ const {
   getAllDoctors,
   getDoctorById,
   updateProfileImage,
+  getDoctorsByLocation,
 } = require("../controllers/doctorController");
 
 const authMiddleware = require("../middlewares/authMiddleware");
@@ -32,6 +33,7 @@ router.get("/profile/:userId", getProfile);
 
 // GET /api/doctors - Get all doctors (Public)
 router.get("/", getAllDoctors);
+router.post("/location", getDoctorsByLocation);
 
 // GET /api/doctors/:id - Get doctor by ID (Public)
 router.get("/:id", getDoctorById);

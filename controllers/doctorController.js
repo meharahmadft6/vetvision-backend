@@ -106,6 +106,46 @@ exports.getAllDoctors = async (req, res) => {
     });
   }
 };
+exports.getDoctorsByLocation = async (req, res) => {
+  try {
+    const { location } = req.body;
+
+    if (!location) {
+      return res.status(400).json({
+        success: false,
+        message: "Location parameter is required",
+      });
+    }
+
+    // Normalize the input (remove extra spaces, handle case sensitivity)
+    const normalizedLocation = location.trim().toLowerCase();
+    const locationParts = normalizedLocation.split(/\s*,\s*/);
+    const city = locationParts[0];
+    const country = locationParts[locationParts.length - 1];
+
+    // Search for addresses that contain BOTH city and country
+    const doctors = await Doctor.find({
+      clinicAddress: {
+        $regex: new RegExp(`${city}.*${country}|${country}.*${city}`, "i"),
+      },
+    })
+      .populate("userId", "name email phone")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: doctors.length,
+      data: doctors,
+    });
+  } catch (error) {
+    console.error("Error fetching doctors by location:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching doctors by location",
+      error: error.message,
+    });
+  }
+};
 // Get doctor by ID
 exports.getDoctorById = async (req, res) => {
   try {
