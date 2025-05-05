@@ -7,12 +7,9 @@ const nodemailer = require("nodemailer");
 exports.bookAppointment = async (req, res) => {
   try {
     const { doctorId, date, startTime, endTime, notes } = req.body;
-    console.log("Booking appointment with data:", req.body);
     const patientId = req.params.id;
-    console.log("Patient ID:", patientId);
     // Validate input
     if (!doctorId || !date || !startTime || !endTime) {
-      console.error("Missing required fields:");
       return res
         .status(400)
         .json({ success: false, message: "Missing required fields" });
@@ -73,7 +70,6 @@ exports.bookAppointment = async (req, res) => {
       appointment: populatedAppointment,
     });
   } catch (error) {
-    console.error("Error booking appointment:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -91,7 +87,6 @@ exports.getPatientAppointments = async (req, res) => {
 
     res.json({ success: true, appointments });
   } catch (error) {
-    console.error("Error fetching patient appointments:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -119,7 +114,6 @@ exports.getAppointmentsByPatientId = async (req, res) => {
       appointments,
     });
   } catch (error) {
-    console.error("Error fetching appointments by patient ID:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -131,30 +125,39 @@ exports.getAppointmentsByPatientId = async (req, res) => {
 // In your appointmentController.js
 exports.getDoctorAppointments = async (req, res) => {
   try {
-    const userId = req.params.id; // This should actually be doctorId
-    console.log("User Id:", userId);
-    // First find the doctor to get the correct ID
-    const doctor = await Doctor.findOne({ userId: userId });
+    const userId = req.params.id;
+
+    // 1. Find the doctor by userId
+    const doctor = await Doctor.findOne({ userId });
     if (!doctor) {
       return res.status(404).json({
         success: false,
         message: "Doctor not found",
       });
     }
-    console.log("Doctor ID:", doctor._id);
-    // Then find non-cancelled appointments
+
+    // 2. Fetch appointments and sort to show 'pending' ones first
     const appointments = await Appointment.find({
       doctor: doctor._id,
-      status: { $ne: "cancelled" }, // Exclude cancelled appointments
+      status: { $ne: "cancelled" }, // Exclude cancelled
     })
       .populate("patient", "name email profileImage")
-      .sort({ date: 1, startTime: 1 });
+      .sort({
+        // Prioritize pending, then sort by date and time
+        status: 1, // 'pending' comes before 'confirmed', 'rejected'
+        date: 1,
+        startTime: 1,
+      });
 
-    console.log("Appointments:", appointments);
+    // Optional: Custom reorder logic if needed (if "pending" is not lexicographically first)
+    const orderedAppointments = [
+      ...appointments.filter((a) => a.status === "pending"),
+      ...appointments.filter((a) => a.status !== "pending"),
+    ];
 
     res.status(200).json({
       success: true,
-      appointments,
+      appointments: orderedAppointments,
       count: appointments.length,
     });
   } catch (error) {
@@ -165,6 +168,7 @@ exports.getDoctorAppointments = async (req, res) => {
     });
   }
 };
+
 // Get all appointments (admin)
 exports.getAllAppointments = async (req, res) => {
   try {
@@ -175,7 +179,6 @@ exports.getAllAppointments = async (req, res) => {
 
     res.json({ success: true, appointments });
   } catch (error) {
-    console.error("Error fetching all appointments:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -199,7 +202,6 @@ exports.getAppointmentById = async (req, res) => {
 
     res.json({ success: true, appointment });
   } catch (error) {
-    console.error("Error fetching appointment:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -254,7 +256,6 @@ exports.cancelAppointment = async (req, res) => {
       appointment: populatedAppointment,
     });
   } catch (error) {
-    console.error("Error cancelling appointment:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -319,7 +320,6 @@ exports.rejectAppointment = async (req, res) => {
       appointment: populatedAppointment,
     });
   } catch (error) {
-    console.error("Error rejecting appointment:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -381,7 +381,6 @@ exports.confirmAppointment = async (req, res) => {
       appointment: updatedAppointment,
     });
   } catch (error) {
-    console.error("Error confirming appointment:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -414,7 +413,6 @@ exports.completeAppointment = async (req, res) => {
       appointment,
     });
   } catch (error) {
-    console.error("Error completing appointment:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -439,7 +437,6 @@ exports.deleteAppointment = async (req, res) => {
       message: "Appointment deleted successfully",
     });
   } catch (error) {
-    console.error("Error deleting appointment:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -477,12 +474,10 @@ async function sendAppointmentConfirmationEmails(appointment) {
       console.error("Patient email is missing");
       return;
     }
-    console.log("Patient email:", appointment.patient.email);
     if (!appointment.doctor.userId.email || !appointment.doctor.userId.email) {
       console.error("Doctor email is missing");
       return;
     }
-    console.log("Doctor  email:", appointment.doctor.userId.email);
     // Email to patient
     await transporter.sendMail({
       from: `"VetVision" <${process.env.EMAIL_USER}>`,
