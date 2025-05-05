@@ -128,13 +128,35 @@ exports.getAppointmentsByPatientId = async (req, res) => {
 };
 
 // Get appointments for a doctor
+// In your appointmentController.js
 exports.getDoctorAppointments = async (req, res) => {
   try {
-    const appointments = await Appointment.find({ doctor: req.user.id })
-      .populate("patient", "name email")
+    const userId = req.params.id; // This should actually be doctorId
+    console.log("User Id:", userId);
+    // First find the doctor to get the correct ID
+    const doctor = await Doctor.findOne({ userId: userId });
+    if (!doctor) {
+      return res.status(404).json({
+        success: false,
+        message: "Doctor not found",
+      });
+    }
+    console.log("Doctor ID:", doctor._id);
+    // Then find non-cancelled appointments
+    const appointments = await Appointment.find({
+      doctor: doctor._id,
+      status: { $ne: "cancelled" }, // Exclude cancelled appointments
+    })
+      .populate("patient", "name email profileImage")
       .sort({ date: 1, startTime: 1 });
 
-    res.json({ success: true, appointments });
+    console.log("Appointments:", appointments);
+
+    res.status(200).json({
+      success: true,
+      appointments,
+      count: appointments.length,
+    });
   } catch (error) {
     console.error("Error fetching doctor appointments:", error);
     res.status(500).json({
@@ -143,7 +165,6 @@ exports.getDoctorAppointments = async (req, res) => {
     });
   }
 };
-
 // Get all appointments (admin)
 exports.getAllAppointments = async (req, res) => {
   try {
@@ -240,33 +261,124 @@ exports.cancelAppointment = async (req, res) => {
     });
   }
 };
+exports.rejectAppointment = async (req, res) => {
+  try {
+    // 1. Extract userId from query
+    const userId = req.query.doctorId;
+
+    // 2. Find the doctor using the userId
+    const doctor = await Doctor.findOne({ userId });
+    if (!doctor) {
+      return res.status(404).json({
+        success: false,
+        message: "Doctor not found",
+      });
+    }
+
+    // 3. Update the appointment status to "rejected" using the doctor's _id
+    const updatedAppointment = await Appointment.findOneAndUpdate(
+      {
+        _id: req.params.id,
+        doctor: doctor._id,
+        status: "pending", // Only allow rejection of pending appointments
+      },
+      { status: "rejected" },
+      { new: true }
+    );
+
+    if (!updatedAppointment) {
+      return res.status(404).json({
+        success: false,
+        message: "Appointment not found or cannot be rejected",
+      });
+    }
+
+    // 4. Populate full appointment details
+    const populatedAppointment = await Appointment.findById(
+      updatedAppointment._id
+    )
+      .populate({
+        path: "patient",
+        select: "name email",
+      })
+      .populate({
+        path: "doctor",
+        select: "degree",
+        populate: {
+          path: "userId",
+          select: "name email",
+        },
+      });
+
+    // 5. Send rejection email to the patient
+    await sendRejectionEmail(populatedAppointment);
+
+    res.json({
+      success: true,
+      message: "Appointment rejected successfully",
+      appointment: populatedAppointment,
+    });
+  } catch (error) {
+    console.error("Error rejecting appointment:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
 // Confirm appointment (doctor)
 exports.confirmAppointment = async (req, res) => {
   try {
-    const appointment = await Appointment.findOneAndUpdate(
+    // 1. Extract userId (doctor's user ID) from query
+    const userId = req.query.doctorId;
+
+    // 2. Find the doctor using the userId
+    const doctor = await Doctor.findOne({ userId });
+    if (!doctor) {
+      return res.status(404).json({
+        success: false,
+        message: "Doctor not found",
+      });
+    }
+
+    // 3. Update the appointment status to "confirmed"
+    const updatedAppointment = await Appointment.findOneAndUpdate(
       {
         _id: req.params.id,
-        doctor: req.user.id,
+        doctor: doctor._id,
         status: "pending",
       },
       { status: "confirmed" },
       { new: true }
-    ).populate("patient", "name email");
+    )
+      .populate({
+        path: "patient",
+        select: "name email",
+      })
+      .populate({
+        path: "doctor",
+        select: "degree",
+        populate: {
+          path: "userId",
+          select: "name email",
+        },
+      });
 
-    if (!appointment) {
+    if (!updatedAppointment) {
       return res.status(404).json({
         success: false,
         message: "Appointment not found or cannot be confirmed",
       });
     }
 
-    // Send confirmation email (async)
-    sendConfirmationEmail(appointment, req.user);
+    // 4. Send confirmation email (async)
+    await sendConfirmationEmail(updatedAppointment);
 
     res.json({
       success: true,
       message: "Appointment confirmed successfully",
-      appointment,
+      appointment: updatedAppointment,
     });
   } catch (error) {
     console.error("Error confirming appointment:", error);
@@ -276,7 +388,6 @@ exports.confirmAppointment = async (req, res) => {
     });
   }
 };
-
 // Complete appointment (doctor)
 exports.completeAppointment = async (req, res) => {
   try {
@@ -511,6 +622,7 @@ async function sendCancellationEmail(appointment, patient) {
 
 async function sendConfirmationEmail(appointment, doctor) {
   try {
+    console.log("Sending confirm email to patient:", appointment.patient.email);
     await transporter.sendMail({
       from: `"VetVision" <${process.env.EMAIL_USER}>`,
       to: appointment.patient.email,
@@ -523,7 +635,7 @@ async function sendConfirmationEmail(appointment, doctor) {
             </p>
             
             <div style="text-align: left; margin: 25px 0;">
-              <p><strong>Doctor:</strong> ${doctor.name}</p>
+              <p><strong>Doctor:</strong> ${appointment.doctor.userId.name}</p>
               <p><strong>Date:</strong> ${appointment.date.toDateString()}</p>
               <p><strong>Time:</strong> ${appointment.startTime} - ${
         appointment.endTime
@@ -596,5 +708,53 @@ async function sendWelcomeEmail(email, name, role) {
     });
   } catch (error) {
     console.error("Error sending welcome email:", error);
+  }
+}
+async function sendRejectionEmail(appointment) {
+  try {
+    console.log(
+      "Sending rejection email to patient:",
+      appointment.patient.email
+    );
+
+    await transporter.sendMail({
+      from: `"VetVision" <${process.env.EMAIL_USER}>`,
+      to: appointment.patient.email,
+      subject: "Appointment Rejection Notification",
+      html: `
+        <div style="${emailStyles.container}">
+          <h2 style="${emailStyles.header}">Appointment Rejected</h2>
+          <p style="${emailStyles.paragraph}">
+            Your appointment request has been rejected by the doctor.
+          </p>
+          
+          <div style="text-align: left; margin: 25px 0;">
+            <p><strong>Doctor:</strong> ${appointment.doctor.userId.name}</p>
+            <p><strong>Date:</strong> ${appointment.date.toDateString()}</p>
+            <p><strong>Time Slot:</strong> ${appointment.startTime} - ${
+        appointment.endTime
+      }</p>
+          </div>
+
+          <p style="text-align: center; font-size: 16px; color: #6B7280; margin-bottom: 30px;">
+            Please consider booking a new appointment at a different time.
+          </p>
+
+          <div style="text-align: center; margin-bottom: 30px;">
+            <a href="https://vetvision.com/patient/book" style="${
+              emailStyles.button
+            }">
+              Book Another Appointment
+            </a>
+          </div>
+
+          <p style="${emailStyles.footer}">
+            This is an automated message. For more information, contact support.
+          </p>
+        </div>
+      `,
+    });
+  } catch (error) {
+    console.error("Error sending rejection email:", error);
   }
 }

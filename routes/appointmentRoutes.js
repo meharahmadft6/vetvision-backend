@@ -8,9 +8,11 @@ router.post("/:id", appointmentController.bookAppointment);
 router.get("/patient/:id", appointmentController.getAppointmentsByPatientId);
 
 router.put("/:id/cancel", appointmentController.cancelAppointment);
+router.put("/:id/reject", appointmentController.rejectAppointment);
+router.put("/:id/confirm", appointmentController.confirmAppointment);
 
 // Doctor routes
-router.get("/doctor", appointmentController.getDoctorAppointments);
+router.get("/doctor/:id", appointmentController.getDoctorAppointments);
 router.put("/:id/confirm", appointmentController.confirmAppointment);
 router.put(
   "/:id/complete",
