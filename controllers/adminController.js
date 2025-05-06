@@ -13,6 +13,7 @@ exports.getDashboardStats = async (req, res) => {
       pendingAppointments,
       confirmedAppointments,
       cancelledAppointments,
+      rejectedAppointments,
     ] = await Promise.all([
       User.countDocuments(),
       Doctor.countDocuments(),
@@ -20,6 +21,7 @@ exports.getDashboardStats = async (req, res) => {
       Appointment.countDocuments({ status: "pending" }),
       Appointment.countDocuments({ status: "confirmed" }),
       Appointment.countDocuments({ status: "cancelled" }),
+      Appointment.countDocuments({ status: "rejected" }),
     ]);
 
     res.status(200).json({
@@ -31,7 +33,8 @@ exports.getDashboardStats = async (req, res) => {
         appointmentsByStatus: {
           pending: pendingAppointments,
           confirmed: confirmedAppointments,
-          cancelled: cancelledAppointments
+          cancelled: cancelledAppointments,
+          rejected: rejectedAppointments,
         },
       },
     });
