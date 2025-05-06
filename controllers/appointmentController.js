@@ -8,6 +8,7 @@ exports.bookAppointment = async (req, res) => {
   try {
     const { doctorId, date, startTime, endTime, notes } = req.body;
     const patientId = req.params.id;
+    console.log("Booking appointment for patient:", req.body);
     // Validate input
     if (!doctorId || !date || !startTime || !endTime) {
       return res
@@ -23,10 +24,26 @@ exports.bookAppointment = async (req, res) => {
         .json({ success: false, message: "Doctor not found" });
     }
 
+    // Convert the appointment date to a Day (e.g., "Monday")
+    const appointmentDate = new Date(date);
+    const dayOfWeek = appointmentDate.toLocaleDateString("en-US", {
+      weekday: "long",
+    });
+
+    // Check if the appointment day is in doctor's working days
+    if (!doctor.workingDays.includes(dayOfWeek)) {
+      return res.status(400).json({
+        success: false,
+        message: `Doctor is not available on ${dayOfWeek}. Available days: ${doctor.workingDays.join(
+          ", "
+        )}`,
+      });
+    }
+
     // Check for time slot availability
     const existingAppointment = await Appointment.findOne({
       doctor: doctorId,
-      date: new Date(date),
+      date: appointmentDate,
       $or: [{ startTime: { $lt: endTime }, endTime: { $gt: startTime } }],
     });
 
@@ -41,7 +58,7 @@ exports.bookAppointment = async (req, res) => {
     const appointment = new Appointment({
       patient: patientId,
       doctor: doctorId,
-      date: new Date(date),
+      date: appointmentDate,
       startTime,
       endTime,
       fee: doctor.consultationFee,
@@ -55,12 +72,13 @@ exports.bookAppointment = async (req, res) => {
       .populate("patient", "name email")
       .populate({
         path: "doctor",
-        select: " degree", // Fields from the doctor
+        select: "degree", // Fields from the doctor
         populate: {
           path: "userId", // User ID field in the doctor model
           select: "name email",
         },
       });
+
     // Send confirmation emails (async - don't await)
     sendAppointmentConfirmationEmails(populatedAppointment);
 
