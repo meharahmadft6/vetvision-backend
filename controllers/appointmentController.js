@@ -116,9 +116,10 @@ exports.getAppointmentsByPatientId = async (req, res) => {
   try {
     const patientId = req.params.id;
 
-    const appointments = await Appointment.find({ patient: patientId })
-      .populate("doctor", "name degree")
-      .sort({ date: 1, startTime: 1 });
+    let appointments = await Appointment.find({ patient: patientId }).populate(
+      "doctor",
+      "name degree"
+    );
 
     if (!appointments.length) {
       return res.status(404).json({
@@ -126,6 +127,18 @@ exports.getAppointmentsByPatientId = async (req, res) => {
         message: "No appointments found for this patient.",
       });
     }
+
+    // Sort: pending first, then by date and startTime
+    appointments.sort((a, b) => {
+      if (a.status === "pending" && b.status !== "pending") return -1;
+      if (a.status !== "pending" && b.status === "pending") return 1;
+
+      // If both are same status, sort by date and time
+      if (a.date < b.date) return -1;
+      if (a.date > b.date) return 1;
+
+      return a.startTime.localeCompare(b.startTime); // assuming startTime is a string
+    });
 
     res.status(200).json({
       success: true,
