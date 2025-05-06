@@ -158,7 +158,7 @@ exports.registerUser = async (req, res) => {
       return res.status(400).json({ message: "All fields are required" });
     }
 
-    if (!["user", "doctor"].includes(role.toLowerCase())) {
+    if (!["user", "doctor", "admin"].includes(role.toLowerCase())) {
       return res.status(400).json({ message: "Invalid role specified" });
     }
 

@@ -5,7 +5,7 @@ const userSchema = new mongoose.Schema({
   email: { type: String, unique: true },
   phone: String,
   password: String,
-  role: { type: String, enum: ["user", "doctor"], default: "user" }, // Added role field
+  role: { type: String, enum: ["user", "doctor", "admin"], default: "user" }, // Added role field
   profileImage: { type: String, default: "" },
   resetPasswordToken: String,
   resetPasswordExpires: Date,
