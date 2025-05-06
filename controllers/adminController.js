@@ -51,13 +51,31 @@ exports.getDashboardStats = async (req, res) => {
 // Get all users
 exports.getAllUsers = async (req, res) => {
   try {
-    const users = await User.find().select(
+    // Step 1: Get all users with roles 'user' or 'doctor'
+    const users = await User.find({ role: { $in: ["user", "doctor"] } }).select(
       "-password -resetPasswordToken -resetPasswordExpires"
     );
+
+    // Step 2: Enhance doctor users with their profileImage
+    const enrichedUsers = await Promise.all(
+      users.map(async (user) => {
+        if (user.role === "doctor") {
+          const doctorProfile = await Doctor.findOne({
+            userId: user._id,
+          }).select("profileImage");
+          return {
+            ...user.toObject(),
+            profileImage: doctorProfile?.profileImage || null,
+          };
+        }
+        return user;
+      })
+    );
+
     res.status(200).json({
       success: true,
-      count: users.length,
-      data: users,
+      count: enrichedUsers.length,
+      data: enrichedUsers,
     });
   } catch (error) {
     console.error("Error fetching users:", error);
@@ -68,7 +86,6 @@ exports.getAllUsers = async (req, res) => {
     });
   }
 };
-
 // Get all doctors with user details
 exports.getAllDoctors = async (req, res) => {
   try {
@@ -109,6 +126,46 @@ exports.getAllAppointments = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to fetch appointments",
+      error: error.message,
+    });
+  }
+};
+exports.deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Step 1: Check if the user exists
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Step 2: If the user is a doctor, check for an existing doctor profile
+    if (user.role === "doctor") {
+      const doctorProfile = await Doctor.findOne({ userId: user._id });
+      if (doctorProfile) {
+        return res.status(400).json({
+          message:
+            "Doctor profile exists. Delete the doctor profile before deleting the user.",
+        });
+      }
+    }
+
+    // Step 3: Delete the user
+    await User.findByIdAndDelete(id);
+
+    res.status(200).json({
+      success: true,
+      message: "User deleted successfully",
+    });
+  } catch (error) {
+    console.error("Error deleting user:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while deleting user",
       error: error.message,
     });
   }

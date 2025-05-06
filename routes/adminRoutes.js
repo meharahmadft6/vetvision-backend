@@ -6,6 +6,7 @@ const {
   getAllUsers,
   getAllDoctors,
   getAllAppointments,
+  deleteUser,
 } = require("../controllers/adminController");
 
 const authMiddleware = require("../middlewares/authMiddleware");
@@ -30,6 +31,7 @@ router.get("/dashboard", getDashboardStats);
 
 // GET /api/admin/users - Get all users (Admin only)
 router.get("/users", getAllUsers);
+router.delete("/users/:id", deleteUser);
 
 // GET /api/admin/doctors - Get all doctors with details (Admin only)
 router.get("/doctors", getAllDoctors);
