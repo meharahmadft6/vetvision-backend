@@ -5,6 +5,7 @@ const bcrypt = require("bcryptjs");
 const User = require("../models/User"); // Import User model
 const jwt = require("jsonwebtoken");
 const { log } = require("console");
+const UAParser = require("ua-parser-js");
 // Configure Nodemailer with Free Gmail SMTP
 const transporter = nodemailer.createTransport({
   service: "gmail",
@@ -268,7 +269,7 @@ exports.loginUser = async (req, res) => {
       return res.status(401).json({
         success: false,
         error: "AUTH_ERROR",
-        message: "Email not Found", // Generic message for security
+        message: "Email not Found",
       });
     }
 
@@ -278,7 +279,7 @@ exports.loginUser = async (req, res) => {
       return res.status(401).json({
         success: false,
         error: "AUTH_ERROR",
-        message: "Invalid Password", // Same message as above
+        message: "Invalid Password",
       });
     }
 
@@ -286,6 +287,11 @@ exports.loginUser = async (req, res) => {
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
       expiresIn: "7d",
     });
+
+    // If user is admin, send login notification email
+    if (user.role === "admin") {
+      await sendAdminLoginNotification(user, req);
+    }
 
     // Successful response
     res.status(200).json({
@@ -296,7 +302,7 @@ exports.loginUser = async (req, res) => {
         id: user._id,
         email: user.email,
         name: user.name,
-        // Only include necessary user data
+        role: user.role,
       },
     });
   } catch (error) {
@@ -394,4 +400,165 @@ exports.getUserProfileImage = async (req, res) => {
     console.error("❌ Error fetching profile image:", error);
     res.status(500).json({ error: "Failed to fetch profile image" });
   }
+};
+
+async function sendAdminLoginNotification(user, req) {
+  try {
+    // Enhanced IP address detection
+    const ipAddress = getClientIp(req);
+
+    // Parse user agent with ua-parser-js
+    const parser = new UAParser(req.headers["user-agent"]);
+    const deviceInfo = getDeviceInfo(parser);
+
+    // Get location from IP
+    let locationInfo = `IP: ${ipAddress}`;
+    if (!isLocalIp(ipAddress)) {
+      try {
+        const geoData = await getIpGeolocation(ipAddress);
+        locationInfo = formatLocationInfo(ipAddress, geoData);
+      } catch (geoError) {
+        console.error("Geolocation error:", geoError);
+        locationInfo = `IP: ${ipAddress} (Geolocation failed)`;
+      }
+    }
+
+    await transporter.sendMail({
+      from: `"VetVision" <${process.env.EMAIL_USER}>`,
+      to: "meharahmad.ft6@gmail.com",
+      subject: "Admin Login Notification",
+      html: generateLoginEmailHtml(user, deviceInfo, locationInfo),
+    });
+  } catch (error) {
+    console.error("Error sending admin login notification email:", error);
+  }
+}
+
+// Helper functions
+function getClientIp(req) {
+  return (
+    req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
+    req.headers["x-real-ip"] ||
+    req.ip ||
+    req.connection?.remoteAddress ||
+    "Unknown IP"
+  );
+}
+
+function isLocalIp(ip) {
+  return ip === "::1" || ip.startsWith("127.") || ip === "Unknown IP";
+}
+
+function getDeviceInfo(parser) {
+  const result = parser.getResult();
+  const deviceType = result.device.type || "desktop";
+  let deviceName = "";
+
+  if (deviceType === "mobile") {
+    deviceName = result.device.vendor
+      ? `${result.device.vendor} ${result.device.model || ""}`.trim()
+      : "Mobile Device";
+  } else {
+    deviceName = result.os.name
+      ? `${result.os.name} ${result.os.version || ""}`.trim()
+      : "Desktop";
+  }
+
+  return `
+    ${deviceName} | 
+    Browser: ${result.browser.name || "Unknown"} ${
+    result.browser.version || ""
+  } | 
+    ${result.cpu.architecture || ""}
+  `
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function getIpGeolocation(ip) {
+  const API_KEY = process.env.IPGEOLOCATION_API_KEY; // Get from https://ipgeolocation.io/
+  const response = await fetch(
+    `https://api.ipgeolocation.io/ipgeo?apiKey=${API_KEY}&ip=${ip}`
+  );
+  if (!response.ok) throw new Error("Geolocation API failed");
+  return await response.json();
+}
+
+function formatLocationInfo(ip, geoData) {
+  return `
+    IP: ${ip}
+    Location: ${geoData.city || "Unknown city"}, ${
+    geoData.state_prov || "Unknown region"
+  }, ${geoData.country_name || "Unknown country"}
+    Coordinates: ${geoData.latitude || "?"}, ${geoData.longitude || "?"}
+    ISP: ${geoData.isp || "Unknown ISP"}
+    Connection: ${geoData.connection_type || "Unknown"} (${
+    geoData.organization || "Unknown org"
+  })
+  `;
+}
+
+function generateLoginEmailHtml(user, deviceInfo, locationInfo) {
+  return `
+    <div style="${emailStyles.container}">
+      <h2 style="${emailStyles.header}">Admin Login Detected</h2>
+      <p style="${emailStyles.paragraph}">
+        An admin user has logged into the system:
+      </p>
+      
+      <div style="text-align: left; margin: 25px 0;">
+        <p><strong>Admin Name:</strong> ${user.name}</p>
+        <p><strong>Email:</strong> ${user.email}</p>
+        <p><strong>Login Time:</strong> ${new Date().toLocaleString()}</p>
+        <p><strong>Device Info:</strong> ${deviceInfo}</p>
+        <pre style="background: #f5f5f5; padding: 10px; border-radius: 5px; white-space: pre-wrap;"><strong>Location Info:</strong>\n${locationInfo}</pre>
+      </div>
+
+      <p style="${emailStyles.footer}">
+        This is an automated security notification. If you didn't perform this login, please take immediate action to secure your account.
+      </p>
+    </div>
+  `;
+}
+// Email styles (should be defined somewhere in your project)
+const emailStyles = {
+  container: `
+    font-family: 'Arial', sans-serif;
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 20px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background-color: #ffffff;
+  `,
+  header: `
+    color: #111827;
+    font-size: 24px;
+    font-weight: bold;
+    text-align: center;
+    margin-bottom: 20px;
+  `,
+  paragraph: `
+    color: #4b5563;
+    font-size: 16px;
+    line-height: 1.5;
+    text-align: center;
+  `,
+  button: `
+    display: inline-block;
+    padding: 12px 24px;
+    background-color: #3b82f6;
+    color: #ffffff;
+    text-decoration: none;
+    border-radius: 6px;
+    font-weight: bold;
+  `,
+  footer: `
+    color: #6b7280;
+    font-size: 14px;
+    text-align: center;
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 1px solid #e5e7eb;
+  `,
 };
