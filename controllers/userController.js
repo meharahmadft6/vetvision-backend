@@ -452,27 +452,71 @@ function isLocalIp(ip) {
 function getDeviceInfo(parser) {
   const result = parser.getResult();
   const deviceType = result.device.type || "desktop";
-  let deviceName = "";
 
+  // Device name construction
+  let deviceName = "";
   if (deviceType === "mobile") {
-    deviceName = result.device.vendor
-      ? `${result.device.vendor} ${result.device.model || ""}`.trim()
-      : "Mobile Device";
+    if (result.device.vendor || result.device.model) {
+      deviceName = `${result.device.vendor || ""} ${
+        result.device.model || ""
+      }`.trim();
+    } else {
+      // Fallback for mobile devices without vendor/model
+      deviceName = getMobileDeviceFallback(result);
+    }
   } else {
     deviceName = result.os.name
       ? `${result.os.name} ${result.os.version || ""}`.trim()
-      : "Desktop";
+      : "Desktop/Laptop";
   }
+
+  // Browser info
+  const browserInfo = result.browser.name
+    ? `${result.browser.name} ${result.browser.version || ""}`.trim()
+    : "Unknown Browser";
+
+  // CPU/Platform info
+  const platformInfo = [];
+  if (result.cpu.architecture) platformInfo.push(result.cpu.architecture);
+  if (result.os.name && deviceType !== "mobile")
+    platformInfo.push(result.os.name);
 
   return `
     ${deviceName} | 
-    Browser: ${result.browser.name || "Unknown"} ${
-    result.browser.version || ""
-  } | 
-    ${result.cpu.architecture || ""}
+    Browser: ${browserInfo} | 
+    ${platformInfo.join(" ")}
   `
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function getMobileDeviceFallback(result) {
+  // Try to extract more info from UA string
+  const ua = result.ua;
+
+  if (ua.includes("Android")) {
+    const androidVersionMatch = ua.match(/Android\s([0-9.]+)/);
+    const androidVersion = androidVersionMatch ? androidVersionMatch[1] : "";
+    return `Android Device ${androidVersion}`.trim();
+  }
+
+  if (ua.includes("iPhone")) {
+    const iosVersionMatch = ua.match(/iPhone OS (\d+_\d+)/);
+    const iosVersion = iosVersionMatch
+      ? iosVersionMatch[1].replace("_", ".")
+      : "";
+    return `iPhone ${iosVersion}`.trim();
+  }
+
+  if (ua.includes("iPad")) {
+    return "iPad";
+  }
+
+  if (ua.includes("Mobile")) {
+    return "Mobile Phone";
+  }
+
+  return "Mobile Device";
 }
 
 async function getIpGeolocation(ip) {
