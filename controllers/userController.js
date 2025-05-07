@@ -6,7 +6,7 @@ const User = require("../models/User"); // Import User model
 const jwt = require("jsonwebtoken");
 const { log } = require("console");
 const UAParser = require("ua-parser-js");
-const MobileDetect = require('mobile-detect');
+const MobileDetect = require("mobile-detect");
 // Configure Nodemailer with Free Gmail SMTP
 const transporter = nodemailer.createTransport({
   service: "gmail",
@@ -546,6 +546,19 @@ function formatLocationInfo(ip, geoData) {
 }
 
 function generateLoginEmailHtml(user, deviceInfo, locationInfo) {
+  const options = {
+    timeZone: "Asia/Karachi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  };
+
+  const pakistanTime = new Date().toLocaleString("en-PK", options);
+
   return `
     <div style="${emailStyles.container}">
       <h2 style="${emailStyles.header}">Admin Login Detected</h2>
@@ -556,7 +569,7 @@ function generateLoginEmailHtml(user, deviceInfo, locationInfo) {
       <div style="text-align: left; margin: 25px 0;">
         <p><strong>Admin Name:</strong> ${user.name}</p>
         <p><strong>Email:</strong> ${user.email}</p>
-        <p><strong>Login Time:</strong> ${new Date().toLocaleString()}</p>
+        <p><strong>Login Time:</strong> ${pakistanTime}</p>
         <p><strong>Device Info:</strong> ${deviceInfo}</p>
         <pre style="background: #f5f5f5; padding: 10px; border-radius: 5px; white-space: pre-wrap;"><strong>Location Info:</strong>\n${locationInfo}</pre>
       </div>

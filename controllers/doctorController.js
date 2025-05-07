@@ -5,10 +5,8 @@ const { uploadToCloudinary } = require("../utils/cloudinary");
 // Create or update doctor profile
 exports.createOrUpdateProfile = async (req, res) => {
   try {
-    const { userId } = req.user;
+    const userId = req.user._id;
     const profileData = req.body;
-    console.log("Profile data:", profileData);
-    console.log("User ID:", userId);
     // Validate required fields
     if (!profileData.degree || !profileData.licenseNumber) {
       return res.status(400).json({
