@@ -170,3 +170,38 @@ exports.deleteUser = async (req, res) => {
     });
   }
 };
+exports.deleteDoctor = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Step 1: Check if the doctor profile exists
+    const doctorProfile = await Doctor.findById(id);
+    if (!doctorProfile) {
+      return res.status(404).json({
+        success: false,
+        message: "Doctor profile not found",
+      });
+    }
+
+    // Step 2: Delete the associated user
+    const user = await User.findById(doctorProfile.userId);
+    if (user) {
+      await User.findByIdAndDelete(user._id);
+    }
+
+    // Step 3: Delete the doctor profile
+    await Doctor.findByIdAndDelete(id);
+
+    res.status(200).json({
+      success: true,
+      message: "Doctor and associated user deleted successfully",
+    });
+  } catch (error) {
+    console.error("Error deleting doctor:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while deleting doctor",
+      error: error.message,
+    });
+  }
+};
