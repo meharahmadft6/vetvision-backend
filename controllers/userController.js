@@ -6,6 +6,7 @@ const User = require("../models/User"); // Import User model
 const jwt = require("jsonwebtoken");
 const { log } = require("console");
 const UAParser = require("ua-parser-js");
+const MobileDetect = require('mobile-detect');
 // Configure Nodemailer with Free Gmail SMTP
 const transporter = nodemailer.createTransport({
   service: "gmail",
@@ -404,12 +405,11 @@ exports.getUserProfileImage = async (req, res) => {
 
 async function sendAdminLoginNotification(user, req) {
   try {
-    // Enhanced IP address detection
     const ipAddress = getClientIp(req);
+    const userAgent = req.headers["user-agent"] || "";
 
-    // Parse user agent with ua-parser-js
-    const parser = new UAParser(req.headers["user-agent"]);
-    const deviceInfo = getDeviceInfo(parser);
+    // Enhanced device detection using both libraries
+    const deviceInfo = getEnhancedDeviceInfo(userAgent);
 
     // Get location from IP
     let locationInfo = `IP: ${ipAddress}`;
@@ -434,7 +434,80 @@ async function sendAdminLoginNotification(user, req) {
   }
 }
 
-// Helper functions
+// Enhanced device detection combining both libraries
+function getEnhancedDeviceInfo(userAgent) {
+  // Parse with ua-parser-js
+  const parser = new UAParser(userAgent);
+  const uaResult = parser.getResult();
+
+  // Parse with mobile-detect
+  const md = new MobileDetect(userAgent);
+
+  // Device type
+  const deviceType = md.mobile()
+    ? "mobile"
+    : md.tablet()
+    ? "tablet"
+    : "desktop";
+
+  // Device name construction
+  let deviceName = "";
+  if (deviceType !== "desktop") {
+    // Try to get manufacturer and model from mobile-detect first
+    const manufacturer = md.mobile() || md.tablet() || "Mobile";
+    const model = md.userAgents.find((ua) => userAgent.includes(ua)) || "";
+
+    deviceName = `${manufacturer} ${model}`.trim();
+
+    // Fallback to ua-parser if no model found
+    if (!model && (uaResult.device.vendor || uaResult.device.model)) {
+      deviceName = `${uaResult.device.vendor || ""} ${
+        uaResult.device.model || ""
+      }`.trim();
+    }
+
+    // Final fallback
+    if (!deviceName) {
+      deviceName = deviceType === "tablet" ? "Tablet" : "Mobile Phone";
+    }
+  } else {
+    deviceName = uaResult.os.name
+      ? `${uaResult.os.name} ${uaResult.os.version || ""}`.trim()
+      : "Desktop";
+  }
+
+  // Browser info
+  const browserInfo = uaResult.browser.name
+    ? `${uaResult.browser.name} ${uaResult.browser.version || ""}`.trim()
+    : "Unknown Browser";
+
+  // Platform info
+  const platformInfo = [];
+  if (uaResult.cpu.architecture) platformInfo.push(uaResult.cpu.architecture);
+  if (uaResult.os.name && deviceType === "desktop")
+    platformInfo.push(uaResult.os.name);
+
+  // Mobile-specific additional info
+  if (deviceType !== "desktop") {
+    if (md.version("WebKit"))
+      platformInfo.push(`WebKit ${md.version("WebKit")}`);
+    if (md.versionStr("Build"))
+      platformInfo.push(`Build ${md.versionStr("Build")}`);
+    if (md.is("iPhone")) platformInfo.push("iPhone");
+    if (md.is("Android"))
+      platformInfo.push(`Android ${md.version("Android") || ""}`.trim());
+  }
+
+  return `
+    ${deviceName} | 
+    Browser: ${browserInfo} | 
+    ${platformInfo.join(" ")}
+  `
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Rest of the helper functions remain the same
 function getClientIp(req) {
   return (
     req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
@@ -449,78 +522,8 @@ function isLocalIp(ip) {
   return ip === "::1" || ip.startsWith("127.") || ip === "Unknown IP";
 }
 
-function getDeviceInfo(parser) {
-  const result = parser.getResult();
-  const deviceType = result.device.type || "desktop";
-
-  // Device name construction
-  let deviceName = "";
-  if (deviceType === "mobile") {
-    if (result.device.vendor || result.device.model) {
-      deviceName = `${result.device.vendor || ""} ${
-        result.device.model || ""
-      }`.trim();
-    } else {
-      // Fallback for mobile devices without vendor/model
-      deviceName = getMobileDeviceFallback(result);
-    }
-  } else {
-    deviceName = result.os.name
-      ? `${result.os.name} ${result.os.version || ""}`.trim()
-      : "Desktop/Laptop";
-  }
-
-  // Browser info
-  const browserInfo = result.browser.name
-    ? `${result.browser.name} ${result.browser.version || ""}`.trim()
-    : "Unknown Browser";
-
-  // CPU/Platform info
-  const platformInfo = [];
-  if (result.cpu.architecture) platformInfo.push(result.cpu.architecture);
-  if (result.os.name && deviceType !== "mobile")
-    platformInfo.push(result.os.name);
-
-  return `
-    ${deviceName} | 
-    Browser: ${browserInfo} | 
-    ${platformInfo.join(" ")}
-  `
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function getMobileDeviceFallback(result) {
-  // Try to extract more info from UA string
-  const ua = result.ua;
-
-  if (ua.includes("Android")) {
-    const androidVersionMatch = ua.match(/Android\s([0-9.]+)/);
-    const androidVersion = androidVersionMatch ? androidVersionMatch[1] : "";
-    return `Android Device ${androidVersion}`.trim();
-  }
-
-  if (ua.includes("iPhone")) {
-    const iosVersionMatch = ua.match(/iPhone OS (\d+_\d+)/);
-    const iosVersion = iosVersionMatch
-      ? iosVersionMatch[1].replace("_", ".")
-      : "";
-    return `iPhone ${iosVersion}`.trim();
-  }
-
-  if (ua.includes("iPad")) {
-    return "iPad";
-  }
-
-  if (ua.includes("Mobile")) {
-    return "Mobile Phone";
-  }
-
-  return "Mobile Device";
-}
-
 async function getIpGeolocation(ip) {
-  const API_KEY = process.env.IPGEOLOCATION_API_KEY; // Get from https://ipgeolocation.io/
+  const API_KEY = process.env.IPGEOLOCATION_API_KEY;
   const response = await fetch(
     `https://api.ipgeolocation.io/ipgeo?apiKey=${API_KEY}&ip=${ip}`
   );
@@ -563,8 +566,7 @@ function generateLoginEmailHtml(user, deviceInfo, locationInfo) {
       </p>
     </div>
   `;
-}
-// Email styles (should be defined somewhere in your project)
+} // Email styles (should be defined somewhere in your project)
 const emailStyles = {
   container: `
     font-family: 'Arial', sans-serif;
