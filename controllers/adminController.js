@@ -143,6 +143,14 @@ exports.deleteUser = async (req, res) => {
       });
     }
 
+    // Prevent deletion if the user is an admin
+    if (user.role === "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Admin users cannot be deleted",
+      });
+    }
+
     // Step 2: If the user is a doctor, check for an existing doctor profile
     if (user.role === "doctor") {
       const doctorProfile = await Doctor.findOne({ userId: user._id });
@@ -170,6 +178,7 @@ exports.deleteUser = async (req, res) => {
     });
   }
 };
+
 exports.deleteDoctor = async (req, res) => {
   try {
     const { id } = req.params;
@@ -183,13 +192,21 @@ exports.deleteDoctor = async (req, res) => {
       });
     }
 
-    // Step 2: Delete the associated user
+    // Step 2: Check the associated user's role
     const user = await User.findById(doctorProfile.userId);
+    if (user && user.role === "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Admin users cannot be deleted",
+      });
+    }
+
+    // Step 3: Delete the associated user
     if (user) {
       await User.findByIdAndDelete(user._id);
     }
 
-    // Step 3: Delete the doctor profile
+    // Step 4: Delete the doctor profile
     await Doctor.findByIdAndDelete(id);
 
     res.status(200).json({

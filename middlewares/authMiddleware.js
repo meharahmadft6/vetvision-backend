@@ -5,7 +5,6 @@ const authMiddleware = async (req, res, next) => {
   const token = req.header("Authorization");
 
   if (!token) {
-    console.log("No token provided in request headers");
     return res.status(401).json({ message: "Unauthorized, no token" });
   }
 
@@ -19,7 +18,6 @@ const authMiddleware = async (req, res, next) => {
     const user = await User.findById(decoded.userId).select("-password");
 
     if (!user) {
-      console.log("User not found:", decoded.userId);
       return res.status(401).json({ message: "User not found" });
     }
 
