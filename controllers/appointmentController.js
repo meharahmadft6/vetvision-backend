@@ -8,53 +8,91 @@ exports.bookAppointment = async (req, res) => {
   try {
     const { doctorId, date, startTime, endTime, notes } = req.body;
     const patientId = req.params.id;
-    console.log("Booking appointment for patient:", req.body);
-    // Validate input
+
+    // Validate required fields
     if (!doctorId || !date || !startTime || !endTime) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Missing required fields" });
+      return res.status(400).json({
+        success: false,
+        message:
+          "Missing required fields: doctorId, date, startTime, or endTime.",
+      });
+    }
+
+    const appointmentDate = new Date(date);
+
+    // Restrict to current year
+    const currentYear = new Date().getFullYear();
+    if (appointmentDate.getFullYear() !== currentYear) {
+      return res.status(400).json({
+        success: false,
+        message: `Appointments can only be booked for the current year (${currentYear}).`,
+      });
     }
 
     // Check if doctor exists
     const doctor = await Doctor.findById(doctorId);
     if (!doctor) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Doctor not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Doctor not found.",
+      });
     }
 
-    // Convert the appointment date to a Day (e.g., "Monday")
-    const appointmentDate = new Date(date);
+    // Convert to weekday name and validate working days
     const dayOfWeek = appointmentDate.toLocaleDateString("en-US", {
       weekday: "long",
     });
-
-    // Check if the appointment day is in doctor's working days
     if (!doctor.workingDays.includes(dayOfWeek)) {
       return res.status(400).json({
         success: false,
         message: `Doctor is not available on ${dayOfWeek}. Available days: ${doctor.workingDays.join(
           ", "
-        )}`,
+        )}.`,
       });
     }
 
-    // Check for time slot availability
-    const existingAppointment = await Appointment.findOne({
+    // Check for conflicting appointment
+    const conflict = await Appointment.findOne({
       doctor: doctorId,
       date: appointmentDate,
-      $or: [{ startTime: { $lt: endTime }, endTime: { $gt: startTime } }],
+      $or: [
+        { startTime: { $lt: endTime }, endTime: { $gt: startTime } }, // Overlapping time
+      ],
     });
 
-    if (existingAppointment) {
+    if (conflict) {
       return res.status(400).json({
         success: false,
-        message: "Time slot already booked. Please choose another time.",
+        message: "Time slot already booked. Please choose a different time.",
       });
     }
 
-    // Create new appointment
+    const userAppointments = await Appointment.countDocuments({
+      patient: patientId,
+      date: appointmentDate,
+    });
+    if (userAppointments >= 3) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "You have reached the maximum number of appointments (3) allowed per day.",
+      });
+    }
+
+    // OPTIONAL: Limit number of appointments per doctor per day
+    const dailyAppointments = await Appointment.countDocuments({
+      doctor: doctorId,
+      date: appointmentDate,
+    });
+    if (dailyAppointments >= 5) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Doctor has reached the maximum number of appointments for the day.",
+      });
+    }
+
+    // Create and save the appointment
     const appointment = new Appointment({
       patient: patientId,
       doctor: doctorId,
@@ -67,30 +105,31 @@ exports.bookAppointment = async (req, res) => {
 
     await appointment.save();
 
-    // Populate doctor and patient details for response
+    // Populate relevant fields for response
     const populatedAppointment = await Appointment.findById(appointment._id)
       .populate("patient", "name email")
       .populate({
         path: "doctor",
-        select: "degree", // Fields from the doctor
+        select: "degree",
         populate: {
-          path: "userId", // User ID field in the doctor model
+          path: "userId",
           select: "name email",
         },
       });
 
-    // Send confirmation emails (async - don't await)
+    // Send emails asynchronously
     sendAppointmentConfirmationEmails(populatedAppointment);
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
-      message: "Appointment booked successfully",
+      message: "Appointment booked successfully.",
       appointment: populatedAppointment,
     });
   } catch (error) {
-    res.status(500).json({
+    console.error("Error booking appointment:", error);
+    return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "Internal server error.",
       error: error.message,
     });
   }
@@ -115,11 +154,16 @@ exports.getPatientAppointments = async (req, res) => {
 exports.getAppointmentsByPatientId = async (req, res) => {
   try {
     const patientId = req.params.id;
+    const now = new Date();
 
-    let appointments = await Appointment.find({ patient: patientId }).populate(
-      "doctor",
-      "name degree"
-    );
+    let appointments = await Appointment.find({ patient: patientId }).populate({
+      path: "doctor",
+      select: "degree profileImage userId",
+      populate: {
+        path: "userId",
+        select: "name",
+      },
+    });
 
     if (!appointments.length) {
       return res.status(404).json({
@@ -128,23 +172,76 @@ exports.getAppointmentsByPatientId = async (req, res) => {
       });
     }
 
-    // Sort: pending first, then by date and startTime
-    appointments.sort((a, b) => {
+    const filteredAppointments = [];
+
+    for (let appointment of appointments) {
+      const appointmentDate = new Date(appointment.date);
+      const [endHour, endMin] = appointment.endTime.split(":");
+      appointmentDate.setHours(parseInt(endHour), parseInt(endMin), 0);
+
+      const afterOneDay = new Date(appointmentDate);
+      afterOneDay.setDate(afterOneDay.getDate() + 1);
+
+      // Cancelled appointments are never shown
+      if (appointment.status === "cancelled") {
+        continue;
+      }
+
+      // Rejected: remove if older than 1 day
+      if (appointment.status === "rejected") {
+        const rejectionAge =
+          (now - new Date(appointment.updatedAt)) / (1000 * 60 * 60 * 24);
+        if (rejectionAge > 1) continue;
+        filteredAppointments.push(appointment);
+        continue;
+      }
+
+      // Confirmed: mark as completed if time is over
+      if (appointment.status === "confirmed") {
+        if (now > appointmentDate) {
+          // Update to completed in DB
+          await Appointment.findByIdAndUpdate(appointment._id, {
+            status: "completed",
+          });
+          continue; // Let it be added in next loop
+        }
+
+        // Show for up to 1 day after appointment ends
+        if (now <= afterOneDay) {
+          filteredAppointments.push(appointment);
+        }
+        continue;
+      }
+
+      // Completed: show only for 1 day after endTime
+      if (appointment.status === "completed") {
+        if (now <= afterOneDay) {
+          filteredAppointments.push(appointment);
+        }
+        continue;
+      }
+
+      // Pending or other statuses
+      filteredAppointments.push(appointment);
+    }
+
+    // Sort: pending first, then by date and time
+    filteredAppointments.sort((a, b) => {
       if (a.status === "pending" && b.status !== "pending") return -1;
       if (a.status !== "pending" && b.status === "pending") return 1;
 
-      // If both are same status, sort by date and time
       if (a.date < b.date) return -1;
       if (a.date > b.date) return 1;
 
-      return a.startTime.localeCompare(b.startTime); // assuming startTime is a string
+      return a.startTime.localeCompare(b.startTime);
     });
 
     res.status(200).json({
       success: true,
-      appointments,
+      appointments: filteredAppointments,
     });
   } catch (error) {
+    console.error(error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -480,7 +577,7 @@ const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
     user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS, 
+    pass: process.env.EMAIL_PASS,
   },
 });
 
