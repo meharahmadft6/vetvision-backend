@@ -255,7 +255,7 @@ exports.getDoctorAppointments = async (req, res) => {
   try {
     const userId = req.params.id;
 
-    // 1. Find the doctor by userId
+    // 1. Find the doctor
     const doctor = await Doctor.findOne({ userId });
     if (!doctor) {
       return res.status(404).json({
@@ -264,28 +264,32 @@ exports.getDoctorAppointments = async (req, res) => {
       });
     }
 
-    // 2. Fetch appointments and sort to show 'pending' ones first
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    // 2. Clean up old cancelled, rejected, and completed appointments (older than 1 day)
+    await Appointment.deleteMany({
+      doctor: doctor._id,
+      status: { $in: ["cancelled", "rejected", "completed"] },
+      date: { $lt: oneDayAgo },
+    });
+
+    // 3. Fetch and sort only valid (pending or confirmed) appointments
     const appointments = await Appointment.find({
       doctor: doctor._id,
-      status: { $ne: "cancelled" }, // Exclude cancelled
+      status: { $nin: ["cancelled", "rejected"] },
     })
       .populate("patient", "name email profileImage")
       .sort({
-        // Prioritize pending, then sort by date and time
-        status: 1, // 'pending' comes before 'confirmed', 'rejected'
+        // Sort by pending first, then date and time
+        status: 1,
         date: 1,
         startTime: 1,
       });
 
-    // Optional: Custom reorder logic if needed (if "pending" is not lexicographically first)
-    const orderedAppointments = [
-      ...appointments.filter((a) => a.status === "pending"),
-      ...appointments.filter((a) => a.status !== "pending"),
-    ];
-
+    // 4. Send response
     res.status(200).json({
       success: true,
-      appointments: orderedAppointments,
+      appointments,
       count: appointments.length,
     });
   } catch (error) {
@@ -296,7 +300,6 @@ exports.getDoctorAppointments = async (req, res) => {
     });
   }
 };
-
 // Get all appointments (admin)
 exports.getAllAppointments = async (req, res) => {
   try {
