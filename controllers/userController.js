@@ -20,6 +20,7 @@ const transporter = nodemailer.createTransport({
 exports.forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
+    console.log(req.body);
     if (!email) {
       return res.status(400).json({ message: "Email is required" });
     }
@@ -31,6 +32,7 @@ exports.forgotPassword = async (req, res) => {
 
     // Generate 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000); // 6-digit OTP
+    console.log(`Generated OTP for ${email}: ${otp}`);
     user.resetPasswordToken = otp;
     user.resetPasswordExpires = Date.now() + 60 * 60 * 1000; // Valid for 60 minutes
     await user.save();
@@ -246,6 +248,7 @@ exports.registerUser = async (req, res) => {
 exports.loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
+    console.log(req.body);
 
     // Validation
     if (!email || !password) {
@@ -266,6 +269,7 @@ exports.loginUser = async (req, res) => {
 
     // Find user
     const user = await User.findOne({ email });
+    console.log(user);
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -361,7 +365,7 @@ exports.uploadProfileImage = async (req, res) => {
     const user = await User.findByIdAndUpdate(
       user_id,
       { profileImage: imageUrl },
-      { new: true }
+      { new: true },
     );
 
     if (!user) {
@@ -447,8 +451,8 @@ function getEnhancedDeviceInfo(userAgent) {
   const deviceType = md.mobile()
     ? "mobile"
     : md.tablet()
-    ? "tablet"
-    : "desktop";
+      ? "tablet"
+      : "desktop";
 
   // Device name construction
   let deviceName = "";
@@ -525,7 +529,7 @@ function isLocalIp(ip) {
 async function getIpGeolocation(ip) {
   const API_KEY = process.env.IPGEOLOCATION_API_KEY;
   const response = await fetch(
-    `https://api.ipgeolocation.io/ipgeo?apiKey=${API_KEY}&ip=${ip}`
+    `https://api.ipgeolocation.io/ipgeo?apiKey=${API_KEY}&ip=${ip}`,
   );
   if (!response.ok) throw new Error("Geolocation API failed");
   return await response.json();
@@ -535,13 +539,13 @@ function formatLocationInfo(ip, geoData) {
   return `
     IP: ${ip}
     Location: ${geoData.city || "Unknown city"}, ${
-    geoData.state_prov || "Unknown region"
-  }, ${geoData.country_name || "Unknown country"}
+      geoData.state_prov || "Unknown region"
+    }, ${geoData.country_name || "Unknown country"}
     Coordinates: ${geoData.latitude || "?"}, ${geoData.longitude || "?"}
     ISP: ${geoData.isp || "Unknown ISP"}
     Connection: ${geoData.connection_type || "Unknown"} (${
-    geoData.organization || "Unknown org"
-  })
+      geoData.organization || "Unknown org"
+    })
   `;
 }
 
