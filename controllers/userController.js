@@ -248,7 +248,6 @@ exports.registerUser = async (req, res) => {
 exports.loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
-    console.log(req.body);
 
     // Validation
     if (!email || !password) {
@@ -269,7 +268,6 @@ exports.loginUser = async (req, res) => {
 
     // Find user
     const user = await User.findOne({ email });
-    console.log(user);
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -281,6 +279,7 @@ exports.loginUser = async (req, res) => {
     // Check password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
+      console.log("Password does not match");
       return res.status(401).json({
         success: false,
         error: "AUTH_ERROR",
@@ -293,12 +292,14 @@ exports.loginUser = async (req, res) => {
       expiresIn: "7d",
     });
 
-    // If user is admin, send login notification email
+    // Don't await - let it run in background
     if (user.role === "admin") {
-      await sendAdminLoginNotification(user, req);
+      sendAdminLoginNotification(user, req).catch((err) =>
+        console.error("Failed to send admin notification:", err),
+      );
     }
 
-    // Successful response
+    // Send response immediately
     res.status(200).json({
       success: true,
       message: "Login successful",
@@ -319,7 +320,6 @@ exports.loginUser = async (req, res) => {
     });
   }
 };
-
 // Helper function for email validation
 function isValidEmail(email) {
   const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
